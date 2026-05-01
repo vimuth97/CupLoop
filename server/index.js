@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const connectDB = require("./config/db");
 const authRouter = require("./routes/auth");
+const adminRouter = require("./routes/admin");
 
 const app = express();
 
@@ -15,6 +16,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/auth", authRouter);
+app.use("/api/admin", adminRouter);
 
 // --- Global error handler ---
 app.use((err, req, res, next) => {

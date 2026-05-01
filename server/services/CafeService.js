@@ -41,6 +41,63 @@ class CafeService {
   async findById(cafeId) {
     return Cafe.findById(cafeId);
   }
+
+  /**
+   * Approve a cafe — sets activeStatus to true and records approval timestamp.
+   * @param {string} cafeId
+   * @returns {Promise<Cafe>}
+   */
+  async approveCafe(cafeId) {
+    const cafe = await Cafe.findByIdAndUpdate(
+      cafeId,
+      { activeStatus: true, approvedAt: new Date(), rejectedReason: null },
+      { new: true }
+    );
+
+    if (!cafe) {
+      const err = new Error("Cafe not found");
+      err.status = 404;
+      err.code = "CAFE_NOT_FOUND";
+      throw err;
+    }
+
+    return cafe;
+  }
+
+  /**
+   * Reject a cafe registration — records the rejection reason.
+   * @param {string} cafeId
+   * @param {string} reason
+   * @returns {Promise<Cafe>}
+   */
+  async rejectCafe(cafeId, reason) {
+    const cafe = await Cafe.findByIdAndUpdate(
+      cafeId,
+      { activeStatus: false, rejectedReason: reason, approvedAt: null },
+      { new: true }
+    );
+
+    if (!cafe) {
+      const err = new Error("Cafe not found");
+      err.status = 404;
+      err.code = "CAFE_NOT_FOUND";
+      throw err;
+    }
+
+    return cafe;
+  }
+
+  /**
+   * Get all cafes pending approval (activeStatus=false, not yet approved or rejected)
+   * @returns {Promise<Cafe[]>}
+   */
+  async getPendingCafes() {
+    return Cafe.find({
+      activeStatus: false,
+      approvedAt: null,
+      rejectedReason: null
+    }).populate("ownerId", "firstName lastName email");
+  }
 }
 
 module.exports = new CafeService();

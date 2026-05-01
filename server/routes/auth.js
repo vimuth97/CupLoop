@@ -292,4 +292,48 @@ router.post("/login", async (req, res, next) => {
   }
 });
 
+/**
+ * POST /auth/refresh
+ *
+ * Exchange a valid refresh token for a new access token.
+ * The refresh token itself is NOT rotated — it remains valid until its
+ * original 7-day expiry. The client should store it securely and reuse it
+ * until it expires, at which point the user must log in again.
+ *
+ * Body:
+ *   { refreshToken: string }
+ *
+ * Responses:
+ *   200 - New access token issued
+ *   400 - Missing refresh token
+ *   401 - Refresh token invalid or expired
+ */
+router.post("/refresh", async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken || typeof refreshToken !== "string" || refreshToken.trim().length === 0) {
+      return res.status(400).json(
+        errorResponse("VALIDATION_ERROR", "Refresh token is required")
+      );
+    }
+
+    // Verify the refresh token exists in the store and is not expired
+    const record = await TokenService.verifyRefreshToken(refreshToken);
+
+    // Issue a new access token preserving the original role
+    const accessToken = TokenService.issueAccessToken({
+      id: record.userId,
+      role: record.role
+    });
+
+    return res.status(200).json({
+      accessToken
+    });
+  } catch (err) {
+    // verifyRefreshToken throws with status 401 on invalid/expired token
+    next(err);
+  }
+});
+
 module.exports = router;
