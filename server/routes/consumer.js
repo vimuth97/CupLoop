@@ -83,4 +83,28 @@ router.get("/cafes", async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/consumer/cafes/:cafeId
+ *
+ * Returns a single active cafe and its full menu.
+ *
+ * Params:
+ *   cafeId - MongoDB ObjectId of the cafe
+ *
+ * Responses:
+ *   200 - Cafe detail and menu items
+ *   404 - Cafe not found or not active
+ */
+router.get("/cafes/:cafeId", async (req, res, next) => {
+  try {
+    const { cafeId } = req.params;
+
+    const { cafe, menu } = await CafeService.getCafeWithMenu(cafeId);
+
+    return res.status(200).json({ cafe, menu });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

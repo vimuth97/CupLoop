@@ -1,4 +1,5 @@
 const Cafe = require("../models/cafe");
+const Menu = require("../models/menu");
 
 class CafeService {
   /**
@@ -99,6 +100,28 @@ class CafeService {
       approvedAt: null,
       rejectedReason: null
     }).populate("ownerId", "firstName lastName email");
+  }
+
+  /**
+   * Get a single active cafe by ID along with its menu.
+   * @param {string} cafeId
+   * @returns {Promise<{ cafe: Cafe, menu: Menu | null }>}
+   */
+  async getCafeWithMenu(cafeId) {
+    const cafe = await Cafe.findOne({ _id: cafeId, activeStatus: true })
+      .select("-rejectedReason -approvedAt")
+      .lean();
+
+    if (!cafe) {
+      const err = new Error("Cafe not found");
+      err.status = 404;
+      err.code = "CAFE_NOT_FOUND";
+      throw err;
+    }
+
+    const menu = await Menu.findOne({ cafeId }).lean();
+
+    return { cafe, menu: menu || { cafeId, items: [] } };
   }
 
   /**
