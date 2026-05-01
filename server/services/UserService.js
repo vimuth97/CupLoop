@@ -35,12 +35,44 @@ class UserService {
   }
 
   /**
+   * Create a new cafe owner user account
+   * @param {Object} userData - { firstName, lastName, email, password }
+   * @returns {Promise<User>}
+   */
+  async createCafeOwner({ firstName, lastName, email, password }) {
+    const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
+
+    const user = await User.create({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email.toLowerCase(),
+      passwordHash,
+      role: "cafe",
+      loyaltyPoints: 0,
+      accountStatus: "active"
+    });
+
+    return user;
+  }
+
+  /**
    * Get user by ID
    * @param {string} userId
    * @returns {Promise<User|null>}
    */
   async findById(userId) {
     return User.findById(userId);
+  }
+
+  /**
+   * Compare a plaintext password against a stored bcrypt hash.
+   * Uses bcrypt.compare for timing-safe comparison.
+   * @param {string} plaintext
+   * @param {string} hash
+   * @returns {Promise<boolean>}
+   */
+  async verifyPassword(plaintext, hash) {
+    return bcrypt.compare(plaintext, hash);
   }
 }
 

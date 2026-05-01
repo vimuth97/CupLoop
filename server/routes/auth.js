@@ -1,11 +1,28 @@
 const express = require("express");
 const UserService = require("../services/UserService");
+const CafeService = require("../services/CafeService");
+const TokenService = require("../services/TokenService");
 const errorResponse = require("../utils/errorResponse");
 
 const router = express.Router();
 
 // Validates email format: must contain @ with non-empty local and domain parts
 const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+/**
+ * Validates password strength rules.
+ * Returns an array of failure messages, empty if valid.
+ */
+const validatePassword = (password) => {
+  if (!password || typeof password !== "string") return ["Password is required"];
+  const errors = [];
+  if (password.length < 8)            errors.push("at least 8 characters");
+  if (!/[A-Z]/.test(password))        errors.push("an uppercase letter");
+  if (!/[a-z]/.test(password))        errors.push("a lowercase letter");
+  if (!/[0-9]/.test(password))        errors.push("a number");
+  if (!/[^A-Za-z0-9]/.test(password)) errors.push("a special character");
+  return errors;
+};
 
 /**
  * POST /auth/register
@@ -42,12 +59,7 @@ router.post("/register", async (req, res, next) => {
     if (!password || typeof password !== "string") {
       fields.password = "Password is required";
     } else {
-      const passwordErrors = [];
-      if (password.length < 8)            passwordErrors.push("at least 8 characters");
-      if (!/[A-Z]/.test(password))        passwordErrors.push("an uppercase letter");
-      if (!/[a-z]/.test(password))        passwordErrors.push("a lowercase letter");
-      if (!/[0-9]/.test(password))        passwordErrors.push("a number");
-      if (!/[^A-Za-z0-9]/.test(password)) passwordErrors.push("a special character");
+      const passwordErrors = validatePassword(password);
       if (passwordErrors.length > 0) {
         fields.password = `Password must contain: ${passwordErrors.join(", ")}`;
       }
@@ -78,6 +90,201 @@ router.post("/register", async (req, res, next) => {
         role: user.role,
         loyaltyPoints: user.loyaltyPoints,
         createdAt: user.createdAt
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /auth/register-cafe
+ *
+ * Register a new cafe owner account and create the associated cafe profile.
+ * The cafe is created with activeStatus=false and requires admin approval
+ * before the owner can access any cafe management endpoints.
+ *
+ * Body:
+ *   {
+ *     firstName: string,
+ *     lastName: string,
+ *     email: string,
+ *     password: string,
+ *     cafeName: string,
+ *     address: string,
+ *     lat: number,
+ *     lng: number,
+ *     contactInfo: string
+ *   }
+ *
+ * Responses:
+ *   201 - Cafe and owner account created, pending admin approval
+ *   400 - Validation error (missing/invalid fields)
+ *   409 - Email already registered
+ */
+router.post("/register-cafe", async (req, res, next) => {
+  try {
+    const { firstName, lastName, email, password, cafeName, address, lat, lng, contactInfo } = req.body;
+
+    // --- Input validation ---
+    const fields = {};
+
+    if (!firstName || typeof firstName !== "string" || firstName.trim().length === 0) {
+      fields.firstName = "First name is required";
+    }
+
+    if (!lastName || typeof lastName !== "string" || lastName.trim().length === 0) {
+      fields.lastName = "Last name is required";
+    }
+
+    if (!email || typeof email !== "string" || !isValidEmail(email)) {
+      fields.email = "A valid email address is required (e.g. owner@example.com)";
+    }
+
+    const passwordErrors = validatePassword(password);
+    if (passwordErrors.length > 0) {
+      fields.password = typeof password !== "string"
+        ? "Password is required"
+        : `Password must contain: ${passwordErrors.join(", ")}`;
+    }
+
+    if (!cafeName || typeof cafeName !== "string" || cafeName.trim().length === 0) {
+      fields.cafeName = "Cafe name is required";
+    }
+
+    if (!address || typeof address !== "string" || address.trim().length === 0) {
+      fields.address = "Address is required";
+    }
+
+    if (lat === undefined || lat === null || typeof lat !== "number" || lat < -90 || lat > 90) {
+      fields.lat = "A valid latitude between -90 and 90 is required";
+    }
+
+    if (lng === undefined || lng === null || typeof lng !== "number" || lng < -180 || lng > 180) {
+      fields.lng = "A valid longitude between -180 and 180 is required";
+    }
+
+    if (!contactInfo || typeof contactInfo !== "string" || contactInfo.trim().length === 0) {
+      fields.contactInfo = "Contact information is required";
+    }
+
+    if (Object.keys(fields).length > 0) {
+      return res.status(400).json(errorResponse("VALIDATION_ERROR", "Invalid input", fields));
+    }
+
+    // --- Duplicate email check ---
+    const existing = await UserService.findByEmail(email);
+    if (existing) {
+      return res.status(409).json(
+        errorResponse("EMAIL_CONFLICT", "An account with this email address already exists")
+      );
+    }
+
+    // --- Create cafe owner user account ---
+    const user = await UserService.createCafeOwner({ firstName, lastName, email, password });
+
+    // --- Create cafe profile (pending approval) ---
+    const cafe = await CafeService.createCafe({
+      ownerId: user._id,
+      name: cafeName,
+      address,
+      lat,
+      lng,
+      contactInfo
+    });
+
+    return res.status(201).json({
+      message: "Cafe registration submitted. Your account is pending admin approval.",
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        createdAt: user.createdAt
+      },
+      cafe: {
+        id: cafe._id,
+        name: cafe.name,
+        location: cafe.location,
+        contactInfo: cafe.contactInfo,
+        activeStatus: cafe.activeStatus,
+        createdAt: cafe.createdAt
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /auth/login
+ *
+ * Authenticate a user and issue an access token + refresh token.
+ * Works for all roles: consumer, cafe, admin.
+ *
+ * Body:
+ *   { email: string, password: string }
+ *
+ * Responses:
+ *   200 - Login successful, returns accessToken and refreshToken
+ *   400 - Missing email or password
+ *   401 - Invalid credentials (deliberately vague — does not reveal which field is wrong)
+ */
+router.post("/login", async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    // --- Basic presence validation ---
+    const fields = {};
+    if (!email || typeof email !== "string" || email.trim().length === 0) {
+      fields.email = "Email is required";
+    }
+    if (!password || typeof password !== "string" || password.length === 0) {
+      fields.password = "Password is required";
+    }
+    if (Object.keys(fields).length > 0) {
+      return res.status(400).json(errorResponse("VALIDATION_ERROR", "Invalid input", fields));
+    }
+
+    // --- Look up user by email ---
+    const user = await UserService.findByEmail(email);
+
+    // --- Timing-safe password comparison ---
+    // Always run bcrypt.compare even when user is not found to prevent
+    // timing-based user enumeration attacks
+    const dummyHash = "$2b$12$invalidhashfortimingprotectiononly000000000000000000000";
+    const passwordMatch = user
+      ? await UserService.verifyPassword(password, user.passwordHash)
+      : await UserService.verifyPassword(password, dummyHash);
+
+    if (!user || !passwordMatch) {
+      return res.status(401).json(
+        errorResponse("INVALID_CREDENTIALS", "Invalid email or password")
+      );
+    }
+
+    // --- Reject deactivated accounts ---
+    if (user.accountStatus === "inactive") {
+      return res.status(401).json(
+        errorResponse("ACCOUNT_INACTIVE", "This account has been deactivated")
+      );
+    }
+
+    // --- Issue tokens ---
+    const accessToken = TokenService.issueAccessToken({ id: user._id, role: user.role });
+    const refreshToken = await TokenService.issueRefreshToken({ userId: user._id, role: user.role });
+
+    return res.status(200).json({
+      message: "Login successful",
+      accessToken,
+      refreshToken,
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role
       }
     });
   } catch (err) {
