@@ -22,12 +22,14 @@ class CafeService {
       name: name.trim(),
       location: {
         address: address.trim(),
-        lat,
-        lng
+        coordinates: {
+          type: "Point",
+          coordinates: [lng, lat] // GeoJSON order: [longitude, latitude]
+        }
       },
       contactInfo: contactInfo.trim(),
       cupInventoryCount: 0,
-      activeStatus: false  // pending admin approval
+      activeStatus: false // pending admin approval
     });
 
     return cafe;
@@ -97,6 +99,34 @@ class CafeService {
       approvedAt: null,
       rejectedReason: null
     }).populate("ownerId", "firstName lastName email");
+  }
+
+  /**
+   * Get all active cafes, optionally filtered by proximity.
+   * Uses MongoDB's $near geospatial query with a 2dsphere index —
+   * no manual distance calculation needed.
+   *
+   * @param {Object} [location] - { lat, lng, radius } radius in km
+   * @returns {Promise<Cafe[]>}
+   */
+  async getActiveCafes(location) {
+    const filter = { activeStatus: true };
+
+    if (location) {
+      const { lat, lng, radius } = location;
+      // $near returns results sorted by distance (nearest first)
+      // $maxDistance is in metres
+      filter["location.coordinates"] = {
+        $near: {
+          $geometry: { type: "Point", coordinates: [lng, lat] },
+          $maxDistance: radius * 1000
+        }
+      };
+    }
+
+    return Cafe.find(filter)
+      .select("-rejectedReason -approvedAt")
+      .lean();
   }
 }
 

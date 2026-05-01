@@ -4,6 +4,7 @@ const express = require("express");
 const connectDB = require("./config/db");
 const authRouter = require("./routes/auth");
 const adminRouter = require("./routes/admin");
+const consumerRouter = require("./routes/consumer");
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.get("/", (req, res) => {
 
 app.use("/auth", authRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/consumer", consumerRouter);
 
 // --- Global error handler ---
 app.use((err, req, res, next) => {

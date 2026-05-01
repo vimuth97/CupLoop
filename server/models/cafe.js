@@ -4,9 +4,12 @@ const cafeSchema = new mongoose.Schema({
   name: { type: String, required: true },
   ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   location: {
-    address: String,
-    lat: Number,
-    lng: Number
+    address: { type: String },
+    // GeoJSON Point — enables MongoDB $near geospatial queries
+    coordinates: {
+      type: { type: String, enum: ["Point"], default: "Point" },
+      coordinates: { type: [Number] } // [longitude, latitude]
+    }
   },
   contactInfo: String,
   cupInventoryCount: { type: Number, default: 0 },
@@ -16,5 +19,8 @@ const cafeSchema = new mongoose.Schema({
   rating: Number,
   createdAt: { type: Date, default: Date.now }
 });
+
+// 2dsphere index enables $near, $geoWithin, and $geoIntersects queries
+cafeSchema.index({ "location.coordinates": "2dsphere" });
 
 module.exports = mongoose.model("Cafe", cafeSchema);
