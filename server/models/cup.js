@@ -1,5 +1,7 @@
+const mongoose = require("mongoose");
+
 const cupSchema = new mongoose.Schema({
-  barcode: { type: String, unique: true },
+  barcode: { type: String, required: true, unique: true },
   status: {
     type: String,
     enum: ["available", "in_use", "lost", "damaged"],
@@ -7,8 +9,8 @@ const cupSchema = new mongoose.Schema({
   },
   currentCafeId: { type: mongoose.Schema.Types.ObjectId, ref: "Cafe" },
   currentUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-  materialType: String,
-  lastUsedAt: Date,
+  materialType: { type: String },
+  lastUsedAt: { type: Date },
   createdAt: { type: Date, default: Date.now }
 });
 
