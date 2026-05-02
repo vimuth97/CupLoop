@@ -3,10 +3,7 @@ const Cup = require("../models/cup");
 class CupService {
   /**
    * Bulk-insert multiple cups into the system.
-   *
-   * Uses insertMany with ordered:false so a duplicate barcode in the batch
-   * does not abort the entire operation — other valid cups are still inserted.
-   *
+   * Uses ordered:false so a duplicate barcode does not abort the entire batch.
    * @param {Array<{ barcode: string, materialType?: string, cafeId?: string }>} cups
    * @returns {Promise<{ inserted: Cup[], duplicates: string[], total: number }>}
    */
@@ -25,17 +22,15 @@ class CupService {
       const result = await Cup.insertMany(docs, { ordered: false });
       insertedDocs = result;
     } catch (err) {
-      // ordered:false — partial success is possible
-      // Mongoose wraps bulk write errors in err.writeErrors
       if (err.writeErrors) {
         insertedDocs = err.insertedDocs || [];
         for (const writeErr of err.writeErrors) {
-          // Code 11000 = duplicate key
           if (writeErr.code === 11000) {
-            const barcode = writeErr.err?.op?.barcode || writeErr.errmsg?.match(/barcode: "([^"]+)"/)?.[1];
+            const barcode =
+              writeErr.err?.op?.barcode ||
+              writeErr.errmsg?.match(/barcode: "([^"]+)"/)?.[1];
             if (barcode) duplicateBarcodes.push(barcode);
           } else {
-            // Re-throw unexpected errors
             throw writeErr;
           }
         }
@@ -44,11 +39,24 @@ class CupService {
       }
     }
 
-    return {
-      inserted: insertedDocs,
-      duplicates: duplicateBarcodes,
-      total: insertedDocs.length
-    };
+    return { inserted: insertedDocs, duplicates: duplicateBarcodes, total: insertedDocs.length };
+  }
+
+  /**
+   * Get cup counts grouped by status using a single aggregation pipeline.
+   * @returns {Promise<{ available: number, in_use: number, damaged: number, lost: number, total: number }>}
+   */
+  async getStatusSummary() {
+    const results = await Cup.aggregate([
+      { $group: { _id: "$status", count: { $sum: 1 } } }
+    ]);
+
+    const summary = { available: 0, in_use: 0, damaged: 0, lost: 0 };
+    for (const { _id, count } of results) {
+      if (_id in summary) summary[_id] = count;
+    }
+    summary.total = Object.values(summary).reduce((a, b) => a + b, 0);
+    return summary;
   }
 
   /**
@@ -70,7 +78,7 @@ class CupService {
   }
 
   /**
-   * Get all cups with status "damaged" or "lost", optionally filtered by status.
+   * Get all cups with status "damaged" or "lost", optionally filtered by one status.
    * @param {string} [status] - "damaged" | "lost" | undefined (returns both)
    * @returns {Promise<Cup[]>}
    */
@@ -102,7 +110,9 @@ class CupService {
     }
 
     if (!["damaged", "lost"].includes(cup.status)) {
-      const err = new Error(`Only damaged or lost cups can be removed. This cup is "${cup.status}"`);
+      const err = new Error(
+        `Only damaged or lost cups can be removed. This cup is "${cup.status}"`
+      );
       err.status = 409;
       err.code = "INVALID_CUP_STATUS";
       throw err;

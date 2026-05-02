@@ -91,6 +91,34 @@ class CafeService {
   }
 
   /**
+   * Get cafe counts grouped by approval state for the admin dashboard.
+   * - pending:  activeStatus=false, no approvedAt, no rejectedReason
+   * - approved: activeStatus=true
+   * - rejected: activeStatus=false, rejectedReason present
+   * @returns {Promise<{ pending: number, approved: number, rejected: number }>}
+   */
+  async getRegistrationSummary() {
+    const [approved, rejected, pending] = await Promise.all([
+      Cafe.countDocuments({ activeStatus: true }),
+      Cafe.countDocuments({ activeStatus: false, rejectedReason: { $ne: null } }),
+      Cafe.countDocuments({ activeStatus: false, approvedAt: null, rejectedReason: null })
+    ]);
+    return { pending, approved, rejected };
+  }
+
+  /**
+   * Get all active cafes whose cupInventoryCount is below a given threshold.
+   * @param {number} [threshold=100]
+   * @returns {Promise<Cafe[]>}
+   */
+  async getCafesLowOnCups(threshold = 100) {
+    return Cafe.find({ activeStatus: true, cupInventoryCount: { $lt: threshold } })
+      .select("name location contactInfo cupInventoryCount")
+      .sort({ cupInventoryCount: 1 })
+      .lean();
+  }
+
+  /**
    * Get all cafes pending approval (activeStatus=false, not yet approved or rejected)
    * @returns {Promise<Cafe[]>}
    */

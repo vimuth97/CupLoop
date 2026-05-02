@@ -11,6 +11,42 @@ const router = express.Router();
 router.use(authenticate, requireRole("admin"));
 
 /**
+ * GET /api/admin/dashboard
+ *
+ * Returns a platform-wide summary for the admin dashboard:
+ *   - Cup counts by status (available, in_use, damaged, lost, total)
+ *   - Cafe registration counts (pending, approved, rejected)
+ *   - Active cafes with fewer than 100 cups (low inventory alert)
+ *
+ * Responses:
+ *   200 - Dashboard data
+ */
+router.get("/dashboard", async (req, res, next) => {
+  try {
+    // Run all three aggregations in parallel
+    const [cupSummary, cafeSummary, lowInventoryCafes] = await Promise.all([
+      CupService.getStatusSummary(),
+      CafeService.getRegistrationSummary(),
+      CafeService.getCafesLowOnCups(100)
+    ]);
+
+    return res.status(200).json({
+      cups: cupSummary,
+      cafes: cafeSummary,
+      alerts: {
+        lowInventoryCafes: {
+          threshold: 100,
+          count: lowInventoryCafes.length,
+          cafes: lowInventoryCafes
+        }
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/admin/cafes/pending
  *
  * List all cafe registrations awaiting approval.
