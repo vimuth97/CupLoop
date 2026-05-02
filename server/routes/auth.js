@@ -336,4 +336,38 @@ router.post("/refresh", async (req, res, next) => {
   }
 });
 
+/**
+ * POST /auth/logout
+ *
+ * Invalidate the user's refresh token.
+ * The access token is short-lived (15 min) and stateless — it will expire
+ * on its own. The client should discard both tokens after calling this.
+ *
+ * Body:
+ *   { refreshToken: string }
+ *
+ * Responses:
+ *   200 - Logged out successfully
+ *   400 - Missing refresh token
+ */
+router.post("/logout", async (req, res, next) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken || typeof refreshToken !== "string" || refreshToken.trim().length === 0) {
+      return res.status(400).json(
+        errorResponse("VALIDATION_ERROR", "Refresh token is required")
+      );
+    }
+
+    // Silently succeeds even if the token is already expired or not found —
+    // the end result (token no longer usable) is the same either way.
+    await TokenService.revokeRefreshToken(refreshToken.trim());
+
+    return res.status(200).json({ message: "Logged out successfully" });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
