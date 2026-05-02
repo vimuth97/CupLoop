@@ -3,6 +3,8 @@ const authenticate = require("../middleware/authenticate");
 const requireRole = require("../middleware/requireRole");
 const CafeService = require("../services/CafeService");
 const OrderService = require("../services/OrderService");
+const LoyaltyService = require("../services/LoyaltyService");
+const RewardCatalogueService = require("../services/RewardCatalogueService");
 const errorResponse = require("../utils/errorResponse");
 
 const router = express.Router();
@@ -206,6 +208,91 @@ router.get("/orders", async (req, res, next) => {
     const orders = await OrderService.getConsumerOrders(req.user.id, status);
 
     return res.status(200).json({ count: orders.length, orders });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/consumer/loyalty
+ *
+ * Returns the consumer's total loyalty points balance and a full history
+ * of how each point was earned — including the source type, cafe name,
+ * linked transaction, and timestamp.
+ *
+ * Responses:
+ *   200 - Points balance and earning history (newest first)
+ */
+router.get("/loyalty", async (req, res, next) => {
+  try {
+    const { totalPoints, history } = await LoyaltyService.getLoyaltySummary(req.user.id);
+
+    return res.status(200).json({ totalPoints, history });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/consumer/cafes/:cafeId/rewards
+ *
+ * Browse all currently active redeemable rewards at a specific cafe.
+ * Sorted by points cost ascending so cheapest rewards appear first.
+ */
+router.get("/cafes/:cafeId/rewards", async (req, res, next) => {
+  try {
+    const rewards = await RewardCatalogueService.getActiveRewardsForCafe(req.params.cafeId);
+    return res.status(200).json({ count: rewards.length, rewards });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/consumer/rewards/redeem
+ *
+ * Redeem a cafe reward using loyalty points.
+ * Points are deducted immediately. A redemption record (status: pending)
+ * is created — the consumer presents it at the cafe to mark it as used.
+ *
+ * Body:
+ *   { cafeRewardId: string }
+ *
+ * Responses:
+ *   201 - Redemption created, points deducted
+ *   400 - Insufficient points
+ *   404 - Reward not available or expired
+ */
+router.post("/rewards/redeem", async (req, res, next) => {
+  try {
+    const { cafeRewardId } = req.body;
+
+    if (!cafeRewardId || typeof cafeRewardId !== "string" || cafeRewardId.trim().length === 0) {
+      return res.status(400).json(
+        errorResponse("VALIDATION_ERROR", "Invalid input", { cafeRewardId: "cafeRewardId is required" })
+      );
+    }
+
+    const redemption = await RewardCatalogueService.redeemReward(req.user.id, cafeRewardId.trim());
+
+    return res.status(201).json({
+      message: `Reward redeemed. Present this to the cafe to claim it.`,
+      redemption
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/consumer/rewards/redemptions
+ *
+ * Get the consumer's full redemption history.
+ */
+router.get("/rewards/redemptions", async (req, res, next) => {
+  try {
+    const redemptions = await RewardCatalogueService.getConsumerRedemptions(req.user.id);
+    return res.status(200).json({ count: redemptions.length, redemptions });
   } catch (err) {
     next(err);
   }

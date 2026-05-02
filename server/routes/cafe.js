@@ -4,6 +4,7 @@ const requireRole = require("../middleware/requireRole");
 const requireActiveStatus = require("../middleware/requireActiveStatus");
 const CupService = require("../services/CupService");
 const OrderService = require("../services/OrderService");
+const RewardCatalogueService = require("../services/RewardCatalogueService");
 const errorResponse = require("../utils/errorResponse");
 
 const router = express.Router();
@@ -95,6 +96,116 @@ router.put("/orders/:orderId/complete", async (req, res, next) => {
         completedAt: order.completedAt
       }
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Reward catalogue management ────────────────────────────────────────────
+
+/**
+ * GET /api/cafe/rewards
+ * List all rewards for this cafe (including inactive — for management view).
+ */
+router.get("/rewards", async (req, res, next) => {
+  try {
+    const rewards = await RewardCatalogueService.getCafeRewards(req.cafe._id);
+    return res.status(200).json({ count: rewards.length, rewards });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/cafe/rewards
+ *
+ * Create a new redeemable reward or discount for consumers.
+ *
+ * Body:
+ *   {
+ *     title:               string,
+ *     description?:        string,
+ *     type:                "discount" | "free_item",
+ *     pointsCost:          number (min 1),
+ *     discountPercentage?: number (1–100, required when type="discount"),
+ *     itemName?:           string  (required when type="free_item"),
+ *     validFrom:           ISO date string,
+ *     validUntil:          ISO date string
+ *   }
+ */
+router.post("/rewards", async (req, res, next) => {
+  try {
+    const { title, description, type, pointsCost, discountPercentage, itemName, validFrom, validUntil } = req.body;
+
+    const fields = {};
+    if (!title || typeof title !== "string" || title.trim().length === 0)
+      fields.title = "Title is required";
+    if (!["discount", "free_item"].includes(type))
+      fields.type = 'type must be "discount" or "free_item"';
+    if (!pointsCost || typeof pointsCost !== "number" || pointsCost < 1)
+      fields.pointsCost = "pointsCost must be a number of at least 1";
+    if (!validFrom || isNaN(Date.parse(validFrom)))
+      fields.validFrom = "A valid validFrom date is required";
+    if (!validUntil || isNaN(Date.parse(validUntil)))
+      fields.validUntil = "A valid validUntil date is required";
+    if (validFrom && validUntil && new Date(validFrom) >= new Date(validUntil))
+      fields.validUntil = "validUntil must be after validFrom";
+
+    if (Object.keys(fields).length > 0)
+      return res.status(400).json(errorResponse("VALIDATION_ERROR", "Invalid input", fields));
+
+    const reward = await RewardCatalogueService.createCafeReward(req.cafe._id, {
+      title, description, type, pointsCost, discountPercentage, itemName, validFrom, validUntil
+    });
+
+    return res.status(201).json({ message: "Reward created successfully", reward });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PUT /api/cafe/rewards/:rewardId
+ * Update an existing reward.
+ */
+router.put("/rewards/:rewardId", async (req, res, next) => {
+  try {
+    const reward = await RewardCatalogueService.updateCafeReward(
+      req.params.rewardId,
+      req.cafe._id,
+      req.body
+    );
+    return res.status(200).json({ message: "Reward updated", reward });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * DELETE /api/cafe/rewards/:rewardId
+ * Remove a reward from the catalogue.
+ */
+router.delete("/rewards/:rewardId", async (req, res, next) => {
+  try {
+    await RewardCatalogueService.deleteCafeReward(req.params.rewardId, req.cafe._id);
+    return res.status(200).json({ message: "Reward deleted" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PUT /api/cafe/redemptions/:redemptionId/use
+ *
+ * Mark a consumer's redemption as used when they present it at the cafe.
+ */
+router.put("/redemptions/:redemptionId/use", async (req, res, next) => {
+  try {
+    const redemption = await RewardCatalogueService.markRedemptionUsed(
+      req.params.redemptionId,
+      req.cafe._id
+    );
+    return res.status(200).json({ message: "Redemption marked as used", redemption });
   } catch (err) {
     next(err);
   }
