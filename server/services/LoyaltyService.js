@@ -1,5 +1,6 @@
 const User = require("../models/user");
 const Reward = require("../models/reward");
+const CupTransaction = require("../models/cupTransaction");
 
 class LoyaltyService {
   /**
@@ -11,7 +12,7 @@ class LoyaltyService {
    * @returns {Promise<{ totalPoints: number, history: Array }>}
    */
   async getLoyaltySummary(userId) {
-    const [user, rewards] = await Promise.all([
+    const [user, rewards, singleUseCupsAvoided] = await Promise.all([
       User.findById(userId).select("loyaltyPoints").lean(),
       Reward.find({ userId })
         .populate({
@@ -23,7 +24,13 @@ class LoyaltyService {
           ]
         })
         .sort({ createdAt: -1 })
-        .lean()
+        .lean(),
+      // Every completed buy/rent/own_cup = one single-use cup avoided
+      CupTransaction.countDocuments({
+        userId,
+        status: "completed",
+        type: { $in: ["buy", "rent", "own_cup"] }
+      })
     ]);
 
     if (!user) {
@@ -59,6 +66,9 @@ class LoyaltyService {
 
     return {
       totalPoints: user.loyaltyPoints,
+      impact: {
+        singleUseCupsAvoided
+      },
       history
     };
   }

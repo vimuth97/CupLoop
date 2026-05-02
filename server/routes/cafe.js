@@ -101,7 +101,79 @@ router.put("/orders/:orderId/complete", async (req, res, next) => {
   }
 });
 
-// ─── Reward catalogue management ────────────────────────────────────────────
+// ─── Walk-in transaction ─────────────────────────────────────────────────────
+
+/**
+ * POST /api/cafe/transactions/walk-in
+ *
+ * Settle a transaction on the spot for a customer who walks in without a pre-order.
+ * The cashier provides the customer's email, transaction type, and optionally a barcode.
+ * The transaction is created and completed immediately — loyalty points are awarded right away.
+ *
+ * Body:
+ *   {
+ *     customerEmail: string,
+ *     type:          "buy" | "rent" | "own_cup",
+ *     barcode?:      string  — required for "buy" and "rent"
+ *   }
+ *
+ * Responses:
+ *   201 - Transaction completed, loyalty points awarded
+ *   400 - Validation error or missing barcode
+ *   403 - Consumer account is inactive
+ *   404 - Consumer not found or cup not available
+ */
+router.post("/transactions/walk-in", async (req, res, next) => {
+  try {
+    const { customerEmail, type, barcode } = req.body;
+
+    // --- Validation ---
+    const fields = {};
+
+    if (!customerEmail || typeof customerEmail !== "string" || customerEmail.trim().length === 0) {
+      fields.customerEmail = "Customer email is required";
+    }
+
+    const validTypes = ["buy", "rent", "own_cup"];
+    if (!type || !validTypes.includes(type)) {
+      fields.type = `type must be one of: ${validTypes.join(", ")}`;
+    }
+
+    if ((type === "buy" || type === "rent") &&
+        (!barcode || typeof barcode !== "string" || barcode.trim().length === 0)) {
+      fields.barcode = `barcode is required for "${type}" transactions`;
+    }
+
+    if (Object.keys(fields).length > 0) {
+      return res.status(400).json(errorResponse("VALIDATION_ERROR", "Invalid input", fields));
+    }
+
+    const { order, consumer } = await OrderService.walkIn({
+      customerEmail: customerEmail.trim(),
+      cafeId: req.cafe._id,
+      type,
+      barcode: barcode?.trim()
+    });
+
+    const LOYALTY_POINTS = { buy: 5, rent: 10, own_cup: 15 };
+
+    return res.status(201).json({
+      message: `Transaction completed. ${LOYALTY_POINTS[type]} loyalty point(s) awarded to ${consumer.firstName} ${consumer.lastName}.`,
+      transaction: {
+        id:                 order._id,
+        type:               order.type,
+        status:             order.status,
+        rewardPointsEarned: order.rewardPointsEarned,
+        completedAt:        order.completedAt
+      },
+      consumer
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── Reward catalogue management ─────────────────────────────────────────────
 
 /**
  * GET /api/cafe/rewards

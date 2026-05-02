@@ -13,6 +13,125 @@ const LOYALTY_POINTS = {
 
 class OrderService {
   /**
+   * Walk-in transaction — cashier settles a transaction on the spot
+   * without a pre-existing order from the consumer.
+   *
+   * Creates the order and immediately completes it in a single atomic operation.
+   * Loyalty points are awarded to the consumer right away.
+   *
+   * @param {Object} params
+   * @param {string} params.customerEmail - Used to look up the consumer account
+   * @param {string} params.cafeId
+   * @param {string} params.type - "buy" | "rent" | "own_cup"
+   * @param {string} [params.barcode] - Required for "buy" and "rent"
+   * @returns {Promise<{ order: CupTransaction, consumer: Object }>}
+   */
+  async walkIn({ customerEmail, cafeId, type, barcode }) {
+    const session = await mongoose.startSession();
+
+    try {
+      let result;
+
+      await session.withTransaction(async () => {
+        // --- Look up consumer by email ---
+        const consumer = await User.findOne({
+          email: customerEmail.toLowerCase(),
+          role: "consumer"
+        }).session(session);
+
+        if (!consumer) {
+          const err = new Error(`No consumer account found with email "${customerEmail}"`);
+          err.status = 404;
+          err.code = "CONSUMER_NOT_FOUND";
+          throw err;
+        }
+
+        if (consumer.accountStatus === "inactive") {
+          const err = new Error("This consumer account has been deactivated");
+          err.status = 403;
+          err.code = "ACCOUNT_INACTIVE";
+          throw err;
+        }
+
+        // --- Validate cup for buy/rent ---
+        let cup = null;
+        if (type === "buy" || type === "rent") {
+          cup = await Cup.findOne({
+            barcode,
+            currentCafeId: cafeId,
+            status: "available"
+          }).session(session);
+
+          if (!cup) {
+            const err = new Error(
+              "No available cup with that barcode was found at this cafe"
+            );
+            err.status = 404;
+            err.code = "CUP_NOT_AVAILABLE";
+            throw err;
+          }
+
+          // Update cup state immediately
+          await Cup.findByIdAndUpdate(
+            cup._id,
+            { status: "in_use", currentUserId: consumer._id, lastUsedAt: new Date() },
+            { session }
+          );
+        }
+
+        const pointsEarned = LOYALTY_POINTS[type];
+
+        // --- Create and immediately complete the transaction ---
+        const [order] = await CupTransaction.create(
+          [{
+            cupId: cup?._id || null,
+            userId: consumer._id,
+            cafeId,
+            type,
+            status: "completed",
+            rewardPointsEarned: pointsEarned,
+            completedAt: new Date()
+          }],
+          { session }
+        );
+
+        // --- Award loyalty points ---
+        await User.findByIdAndUpdate(
+          consumer._id,
+          { $inc: { loyaltyPoints: pointsEarned } },
+          { session }
+        );
+
+        // --- Record reward entry ---
+        await Reward.create(
+          [{
+            userId: consumer._id,
+            points: pointsEarned,
+            source: type,
+            transactionId: order._id
+          }],
+          { session }
+        );
+
+        result = {
+          order,
+          consumer: {
+            id: consumer._id,
+            firstName: consumer.firstName,
+            lastName: consumer.lastName,
+            email: consumer.email,
+            loyaltyPointsAfter: consumer.loyaltyPoints + pointsEarned
+          }
+        };
+      });
+
+      return result;
+    } finally {
+      session.endSession();
+    }
+  }
+
+  /**
    * Create a pending order for a consumer.
    * For "buy" and "rent", a specific cup barcode must be provided.
    * For "own_cup", no cup is needed — the consumer brings their own.
