@@ -4,14 +4,15 @@ class CupService {
   /**
    * Bulk-insert multiple cups into the system.
    * Uses ordered:false so a duplicate barcode does not abort the entire batch.
-   * @param {Array<{ barcode: string, materialType?: string, cafeId?: string }>} cups
+   * @param {string} cafeId - The cafe all cups are assigned to
+   * @param {Array<{ barcode: string, materialType?: string }>} cups
    * @returns {Promise<{ inserted: Cup[], duplicates: string[], total: number }>}
    */
-  async bulkCreate(cups) {
-    const docs = cups.map(({ barcode, materialType, cafeId }) => ({
+  async bulkCreate(cafeId, cups) {
+    const docs = cups.map(({ barcode, materialType }) => ({
       barcode: barcode.trim(),
       materialType: materialType?.trim() || undefined,
-      currentCafeId: cafeId || undefined,
+      currentCafeId: cafeId,
       status: "available"
     }));
 
@@ -57,6 +58,26 @@ class CupService {
     }
     summary.total = Object.values(summary).reduce((a, b) => a + b, 0);
     return summary;
+  }
+
+  /**
+   * Get all cups currently assigned to a specific cafe, grouped by status.
+   * @param {string} cafeId
+   * @returns {Promise<{ cups: Cup[], summary: Object }>}
+   */
+  async getCafeInventory(cafeId) {
+    const cups = await Cup.find({ currentCafeId: cafeId })
+      .select("barcode status materialType lastUsedAt createdAt")
+      .sort({ status: 1, createdAt: -1 })
+      .lean();
+
+    // Build a status summary from the returned cups
+    const summary = { available: 0, in_use: 0, damaged: 0, lost: 0, total: cups.length };
+    for (const cup of cups) {
+      if (cup.status in summary) summary[cup.status]++;
+    }
+
+    return { cups, summary };
   }
 
   /**
