@@ -9,48 +9,19 @@ const errorResponse = require("../utils/errorResponse");
 
 const router = express.Router();
 
-// All cafe routes require a valid JWT with role "cafe" and an approved cafe account
 router.use(authenticate, requireRole("cafe"), requireActiveStatus);
 
-/**
- * GET /api/cafe/inventory
- *
- * Returns all cups currently assigned to the authenticated cafe,
- * along with a status breakdown summary.
- *
- * The cafe is identified from the JWT — no cafeId param needed.
- *
- * Responses:
- *   200 - Full cup inventory with summary
- *   403 - Cafe not yet approved
- */
+// GET /api/cafe/inventory
 router.get("/inventory", async (req, res, next) => {
   try {
-    // req.cafe is attached by requireActiveStatus middleware
     const { cups, summary } = await CupService.getCafeInventory(req.cafe._id);
-
-    return res.status(200).json({
-      cafe: {
-        id: req.cafe._id,
-        name: req.cafe.name
-      },
-      summary,
-      cups
-    });
+    return res.status(200).json({ cafe: { id: req.cafe._id, name: req.cafe.name }, summary, cups });
   } catch (err) {
     next(err);
   }
 });
 
-/**
- * GET /api/cafe/orders/pending
- *
- * Get all pending orders for this cafe — consumers who have placed an order
- * and are expected to arrive to complete the transaction.
- *
- * Responses:
- *   200 - List of pending orders
- */
+// GET /api/cafe/orders/pending
 router.get("/orders/pending", async (req, res, next) => {
   try {
     const orders = await OrderService.getCafePendingOrders(req.cafe._id);
@@ -60,112 +31,44 @@ router.get("/orders/pending", async (req, res, next) => {
   }
 });
 
-/**
- * PUT /api/cafe/orders/:orderId/complete
- *
- * Complete a pending order when the consumer arrives and pays.
- * This awards loyalty points to the consumer and updates cup state.
- *
- * Loyalty points awarded:
- *   buy      →  5 pts
- *   rent     → 10 pts
- *   own_cup  → 15 pts
- *
- * Params:
- *   orderId - MongoDB ObjectId of the order
- *
- * Responses:
- *   200 - Order completed, loyalty points awarded
- *   403 - Order does not belong to this cafe
- *   404 - Order not found
- *   409 - Order already completed
- */
+// PUT /api/cafe/orders/:orderId/complete
 router.put("/orders/:orderId/complete", async (req, res, next) => {
   try {
-    const { orderId } = req.params;
-
-    const order = await OrderService.completeOrder(orderId, req.cafe._id);
-
+    const order = await OrderService.completeOrder(req.params.orderId, req.cafe._id);
     return res.status(200).json({
       message: `Order completed. ${order.rewardPointsEarned} loyalty point(s) awarded to the consumer.`,
-      order: {
-        id: order._id,
-        type: order.type,
-        status: order.status,
-        rewardPointsEarned: order.rewardPointsEarned,
-        completedAt: order.completedAt
-      }
+      order: { id: order._id, type: order.type, status: order.status, rewardPointsEarned: order.rewardPointsEarned, completedAt: order.completedAt }
     });
   } catch (err) {
     next(err);
   }
 });
 
-// ─── Walk-in transaction ─────────────────────────────────────────────────────
-
-/**
- * POST /api/cafe/transactions/walk-in
- *
- * Settle a transaction on the spot for a customer who walks in without a pre-order.
- * The cashier provides the customer's email, transaction type, and optionally a barcode.
- * The transaction is created and completed immediately — loyalty points are awarded right away.
- *
- * Body:
- *   {
- *     customerEmail: string,
- *     type:          "buy" | "rent" | "own_cup",
- *     barcode?:      string  — required for "buy" and "rent"
- *   }
- *
- * Responses:
- *   201 - Transaction completed, loyalty points awarded
- *   400 - Validation error or missing barcode
- *   403 - Consumer account is inactive
- *   404 - Consumer not found or cup not available
- */
+// POST /api/cafe/transactions/walk-in
 router.post("/transactions/walk-in", async (req, res, next) => {
   try {
     const { customerEmail, type, barcode } = req.body;
-
-    // --- Validation ---
     const fields = {};
 
-    if (!customerEmail || typeof customerEmail !== "string" || customerEmail.trim().length === 0) {
+    if (!customerEmail || typeof customerEmail !== "string" || customerEmail.trim().length === 0)
       fields.customerEmail = "Customer email is required";
-    }
 
     const validTypes = ["buy", "rent", "own_cup"];
-    if (!type || !validTypes.includes(type)) {
+    if (!type || !validTypes.includes(type))
       fields.type = `type must be one of: ${validTypes.join(", ")}`;
-    }
 
-    if ((type === "buy" || type === "rent") &&
-        (!barcode || typeof barcode !== "string" || barcode.trim().length === 0)) {
+    if ((type === "buy" || type === "rent") && (!barcode || typeof barcode !== "string" || barcode.trim().length === 0))
       fields.barcode = `barcode is required for "${type}" transactions`;
-    }
 
-    if (Object.keys(fields).length > 0) {
+    if (Object.keys(fields).length > 0)
       return res.status(400).json(errorResponse("VALIDATION_ERROR", "Invalid input", fields));
-    }
 
-    const { order, consumer } = await OrderService.walkIn({
-      customerEmail: customerEmail.trim(),
-      cafeId: req.cafe._id,
-      type,
-      barcode: barcode?.trim()
-    });
-
+    const { order, consumer } = await OrderService.walkIn({ customerEmail: customerEmail.trim(), cafeId: req.cafe._id, type, barcode: barcode?.trim() });
     const LOYALTY_POINTS = { buy: 5, rent: 10, own_cup: 15 };
 
     return res.status(201).json({
       message: `Transaction completed. ${LOYALTY_POINTS[type]} loyalty point(s) awarded to ${consumer.firstName} ${consumer.lastName}.`,
-      transaction: {
-        id:                 order._id,
-        type:               order.type,
-        status:             order.status,
-        rewardPointsEarned: order.rewardPointsEarned,
-        completedAt:        order.completedAt
-      },
+      transaction: { id: order._id, type: order.type, status: order.status, rewardPointsEarned: order.rewardPointsEarned, completedAt: order.completedAt },
       consumer
     });
   } catch (err) {
@@ -173,12 +76,7 @@ router.post("/transactions/walk-in", async (req, res, next) => {
   }
 });
 
-// ─── Reward catalogue management ─────────────────────────────────────────────
-
-/**
- * GET /api/cafe/rewards
- * List all rewards for this cafe (including inactive — for management view).
- */
+// GET /api/cafe/rewards
 router.get("/rewards", async (req, res, next) => {
   try {
     const rewards = await RewardCatalogueService.getCafeRewards(req.cafe._id);
@@ -188,28 +86,12 @@ router.get("/rewards", async (req, res, next) => {
   }
 });
 
-/**
- * POST /api/cafe/rewards
- *
- * Create a new redeemable reward or discount for consumers.
- *
- * Body:
- *   {
- *     title:               string,
- *     description?:        string,
- *     type:                "discount" | "free_item",
- *     pointsCost:          number (min 1),
- *     discountPercentage?: number (1–100, required when type="discount"),
- *     itemName?:           string  (required when type="free_item"),
- *     validFrom:           ISO date string,
- *     validUntil:          ISO date string
- *   }
- */
+// POST /api/cafe/rewards
 router.post("/rewards", async (req, res, next) => {
   try {
     const { title, description, type, pointsCost, discountPercentage, itemName, validFrom, validUntil } = req.body;
-
     const fields = {};
+
     if (!title || typeof title !== "string" || title.trim().length === 0)
       fields.title = "Title is required";
     if (!["discount", "free_item"].includes(type))
@@ -226,37 +108,24 @@ router.post("/rewards", async (req, res, next) => {
     if (Object.keys(fields).length > 0)
       return res.status(400).json(errorResponse("VALIDATION_ERROR", "Invalid input", fields));
 
-    const reward = await RewardCatalogueService.createCafeReward(req.cafe._id, {
-      title, description, type, pointsCost, discountPercentage, itemName, validFrom, validUntil
-    });
-
+    const reward = await RewardCatalogueService.createCafeReward(req.cafe._id, { title, description, type, pointsCost, discountPercentage, itemName, validFrom, validUntil });
     return res.status(201).json({ message: "Reward created successfully", reward });
   } catch (err) {
     next(err);
   }
 });
 
-/**
- * PUT /api/cafe/rewards/:rewardId
- * Update an existing reward.
- */
+// PUT /api/cafe/rewards/:rewardId
 router.put("/rewards/:rewardId", async (req, res, next) => {
   try {
-    const reward = await RewardCatalogueService.updateCafeReward(
-      req.params.rewardId,
-      req.cafe._id,
-      req.body
-    );
+    const reward = await RewardCatalogueService.updateCafeReward(req.params.rewardId, req.cafe._id, req.body);
     return res.status(200).json({ message: "Reward updated", reward });
   } catch (err) {
     next(err);
   }
 });
 
-/**
- * DELETE /api/cafe/rewards/:rewardId
- * Remove a reward from the catalogue.
- */
+// DELETE /api/cafe/rewards/:rewardId
 router.delete("/rewards/:rewardId", async (req, res, next) => {
   try {
     await RewardCatalogueService.deleteCafeReward(req.params.rewardId, req.cafe._id);
@@ -266,17 +135,10 @@ router.delete("/rewards/:rewardId", async (req, res, next) => {
   }
 });
 
-/**
- * PUT /api/cafe/redemptions/:redemptionId/use
- *
- * Mark a consumer's redemption as used when they present it at the cafe.
- */
+// PUT /api/cafe/redemptions/:redemptionId/use
 router.put("/redemptions/:redemptionId/use", async (req, res, next) => {
   try {
-    const redemption = await RewardCatalogueService.markRedemptionUsed(
-      req.params.redemptionId,
-      req.cafe._id
-    );
+    const redemption = await RewardCatalogueService.markRedemptionUsed(req.params.redemptionId, req.cafe._id);
     return res.status(200).json({ message: "Redemption marked as used", redemption });
   } catch (err) {
     next(err);
