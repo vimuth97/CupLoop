@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> CupLoop Cafe Map</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <nav class="navbar" role="navigation" aria-label="Main Navigation">
+        <div class="nav-container">
+            <a href="map.html" class="logo">
+            <img src="logo.png" alt="CupLoop Logo" height="50"> 
+            </a>
+            <ul class="nav-links">
+                <li><a href="#">About Us</a></li>
+                <li><a href="#" class="active">Cafe Map</a></li>
+                <li><a href="#">How It Works</a></li>
+                <li><a href="#">FAQ</a></li>
+                <li><a href="#" class="btn-login">Login</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <!-- Interactive Map Section -->
+        <section class="map-section" aria-label="Interactive Map View">
+            <div class="map-placeholder">
+                <h2>Map View</h2>
+                <p>Google Maps Integration for Sydney Metro Area</p>
+                <div class="map-icon">📍</div>
+            </div>
+        </section>
+
+        <!-- Sidebar Section -->
+        <section class="sidebar" aria-label="Cafe Directory">
+            <div class="search-container">
+                <label for="cafe-search" class="visually-hidden">Search cafes by suburb</label>
+                <input type="text" id="cafe-search" placeholder="Search by suburb (e.g. Richmond)..." aria-controls="cafe-list">
+            </div>
+
+            <div id="cafe-list-container">
+            <!-- JavaScript will populate this area -->
+            </div>
+        </section>
+    </main>
+<script>
+    function initMap() {
+        // Coordinates for Sydney (centered near your cafes)
+        const sydney = { lat: -33.8688, lng: 151.2093 };
+        
+        // Create the map, targeting the 'map-view' div
+        const map = new google.maps.Map(document.querySelector('.map-section'), {
+            zoom: 12,
+            center: sydney,
+            styles: [
+                // Optional: You can add custom "Coffee Brown" styles here later
+            ]
+        });
+
+        // Example Marker for a Cafe
+        const marker = new google.maps.Marker({
+            position: { lat: -33.6000, lng: 150.7500 }, // Richmond area
+            map: map,
+            title: "The Espresso Hub"
+        });
+    }
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDItzJgYKBCyeqcrMn8fEn8xtlkoTpg3Ag&callback=initMap" async defer></script>
+</body>
+</html>

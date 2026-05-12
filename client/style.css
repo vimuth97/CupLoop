@@ -1,0 +1,241 @@
+/* Color Palette & Variables */
+:root {
+    --espresso: #6F4E37;
+    --latte: #F5F5DC;
+    --forest-green: #2D5A27;
+    --light-green: #c7ddb5;
+    --mint: #A8E6CF;
+    --cream-light: #FFFDF5;
+    --warning-red: #A30000;
+    --warning-light: #FFD1D1;
+    --text-dark: #2C1E12;
+    --white: #FFFFFF;
+}
+
+/* Base Reset */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--latte);
+    color: var(--text-dark);
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    overflow-x: hidden;
+}
+
+/* Navigation Bar */
+.navbar {
+    background-color: var(--espresso);
+    padding: 1rem 0;
+    position: sticky;
+    top: 0;
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.nav-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+}
+
+.nav-links {
+    display: flex;
+    list-style: none;
+}
+
+.nav-links li {
+    margin-left: 25px;
+}
+
+.nav-links a {
+    color: var(--white);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+.nav-links a:hover, .nav-links a.active {
+    color: var(--light-green);
+}
+
+.nav-links .btn-login {
+    background-color: var(--light-green); 
+    color: var(--forest-green) !important;       
+    padding: 8px 20px;                    
+    border-radius: 25px;                 
+    font-weight: bold;
+    transition: all 0.3s ease;
+    border: 2px solid var(--light-green);
+    margin-left: 10px;                    
+}
+
+.nav-links .btn-login:hover {
+    background-color: transparent;        
+    color: var(--light-green) !important; 
+    transform: translateY(-2px);          
+}
+/* Layout Container */
+.main-content {
+    display: flex;
+    height: calc(100vh - 74px);
+}
+
+/* Map Section */
+.map-section {
+    flex: 2;
+    background-color: #DCD0B8; /* Map placeholder color */
+    border-right: 3px solid var(--espresso);
+}
+
+.map-placeholder {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.map-icon {
+    font-size: 4rem;
+    margin-top: 15px;
+}
+
+/* Sidebar Directory */
+.sidebar {
+    flex: 1;
+    background-color: var(--cream-light);
+    padding: 25px;
+    overflow-y: auto;
+}
+
+.search-container {
+    margin-bottom: 25px;
+}
+
+#cafe-search {
+    width: 100%;
+    padding: 14px;
+    border: 2px solid var(--espresso);
+    border-radius: 12px;
+    font-size: 1rem;
+    background-color: var(--white);
+}
+
+/* Cafe Cards */
+.cafe-card {
+    background-color: var(--white);
+    border: 1px solid #E0D6C8;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    transition: all 0.2s ease-in-out;
+}
+
+.cafe-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 12px rgba(0,0,0,0.08);
+    border-color: var(--forest-green);
+}
+
+.cafe-name {
+    display: block;
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: var(--espresso);
+    margin-bottom: 5px;
+}
+
+.cafe-address {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 12px;
+}
+
+/* Badges & Buttons */
+.status-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.available {
+    background-color: var(--mint);
+    color: var(--forest-green);
+}
+
+.warning {
+    background-color: var(--warning-light);
+    color: var(--warning-red);
+}
+
+.btn-primary {
+    display: block;
+    width: 100%;
+    margin-top: 15px;
+    background-color: var(--forest-green);
+    color: var(--white);
+    border: none;
+    padding: 12px;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.btn-primary:hover {
+    background-color: var(--espresso);
+}
+
+/* Accessibility Helpers */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+/* Responsive UI */
+@media (max-width: 900px) {
+    .main-content {
+        flex-direction: column;
+        height: auto;
+    }
+
+    .map-section {
+        height: 350px;
+        border-right: none;
+        border-bottom: 3px solid var(--espresso);
+    }
+
+    .sidebar {
+        padding: 20px;
+    }
+}
+
+@media (max-width: 600px) {
+    .nav-links {
+        display: none; /* Recommended: implement a mobile burger menu here */
+    }
+}
+
+@media (max-width: 600px) {
+    .nav-links .btn-login {
+        margin-left: 0;
+        margin-top: 10px;
+        display: inline-block;
+    }
+}
